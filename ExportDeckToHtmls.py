@@ -11,17 +11,78 @@ html_template = """
 <head>
     <meta charset="UTF-8">
     <style>
-    {{style}}
-    button.audio-btn {
-        background: url('data:image/svg+xml;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAACXBIWXMAAAsTAAALEwEAmpwYAAABTklEQVRoge3ZvUtCYRQG8JeEaAkXaQyaG9obdFVy16nRtdG1waHVxT/A0dVR0N2gZlehTWiJqKDsOeIBwc977+t7fOQ+8NvPA/fj3Pc6lybNXpOxHiBJqvANLcgZzxIrDZjOvUMdTk0nipjFAmoEZcuhomRVAdWDa7vRdsumAuIHmpC1GnBbthVQE3hwB/jE2rWAeoWCyaRrErWA6sKVwbxLiVtAyPtD7o/z4FMvJEkB9QY1OAk8+yw+CqhnuA07vt8C4g86cMlaQH3AI5yxFlBjuGcuoAZww1xA/EIbLlgLKK9ru0UB5WVttyygEq3th1BAyFpSYi9QZC1AewnJTXwXd3DLArSPUeoXWd+RrhK0yxztOk39QTN0pJ+UtB/1n/DkSI9VaA+2XiBvMumaHP3hLvXxOu0PDi9rbqjQ/+SrwJcj/s0qMXmDpkkTMP8s/ucrc9kEaQAAAABJRU5ErkJggg==') no-repeat center center; /* Base64-encoded play icon */
-        width: 32px;
-        height: 32px;
-        border: none;
-        cursor: pointer;
-    }
-    button.audio-btn:focus {
-        outline: none;
-    }
+        /* Soothing background and text colors for eye comfort */
+        body {
+            background-color: #2D2D2D;  /* Dark, but not black, background */
+            color: #D4D4D4;  /* Soft off-white for text */
+            font-family: Arial, sans-serif;
+            line-height: 1.6;  /* Increased line height for better readability */
+        }
+    
+        /* Card container with soft rounded edges and comfortable padding */
+        .card-container {
+            margin: 20px;
+            padding: 20px;
+            border: 1px solid #444;  /* Darker gray for subtle borders */
+            border-radius: 12px;  /* Slightly larger border radius */
+            background-color: #3B3B3B;  /* Slightly lighter background for card area */
+        }
+    
+        /* Field name is made less prominent but still readable */
+        .field-name {
+            color: #BBBBBB;  /* Lighter gray for field names */
+            font-size: 12px;  /* Slightly larger for easier readability */
+            font-weight: normal;
+        }
+    
+        /* Field values are slightly larger and in soft white */
+        .field-value {
+            color: #E0E0E0;  /* Soft off-white for text */
+            font-size: 14px;  /* Larger text for easier reading */
+        }
+    
+        /* Bold and emphasized "Word" field with a calming orange color */
+        .field-value-bold {
+            font-weight: bold;
+            font-size: 22px;  /* Larger for emphasis */
+            color: #FFA500;  /* Muted, warm orange */
+        }
+    
+        /* Images are kept small but can be adjusted easily */
+        img {
+            width: 100px;
+            height: 100px;
+            object-fit: cover;
+            border-radius: 8px;  /* Slight rounding to soften the edges */
+        }
+    
+        /* Links in a calming desaturated orange */
+        a {
+            color: #FFA500;  /* Warm, muted orange */
+        }
+    
+        /* Custom audio button with SVG icon */
+        button.audio-btn {
+            background: none;
+            width: 32px;
+            height: 32px;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+    
+        /* The play button icon with a warm orange tone */
+        button.audio-btn svg {
+            width: 100%;
+            height: 100%;
+            fill: #FFA500;  /* Warm, muted orange */
+        }
+    
+        button.audio-btn:focus {
+            outline: none;  /* Remove focus outline for a cleaner look */
+        }
     </style>
 </head>
 <body>
@@ -84,12 +145,22 @@ class ExportToHtmlDialog(QDialog):
             css = model.get('css', '')
 
             # Build the HTML for the card
-            card_html = f"<div><h3>Card {i+1}</h3>\n"
+            card_html = f"<div class='card-container'><h3>Card {i+1}</h3>\n"
             for field_name in note.keys():
                 value = note[field_name].strip()  # Strip whitespace
                 if value:  # Only include non-empty fields
                     value = re.sub(r'{{[c|C][0-9]+::(.*?)}}', r'\1', value)  # Handle cloze deletion
-                    card_html += f"<div><strong>{field_name}:</strong> {self.process_media(value)}</div>\n"
+
+                    # Special styling for "Word" field
+                    if field_name == 'Word':
+                        # Ensure we replace all color formats
+                        value = re.sub(r'(?i)#0000ff', '#ff8c00', value)  # Case insensitive replacement
+                        field_html = f"<div class='field-name'>{field_name}:</div> <div class='field-value field-value-bold'>{value}</div>\n"
+                    else:
+                        field_html = f"<div class='field-name'>{field_name}:</div> <div class='field-value'>{self.process_media(value)}</div>\n"
+
+                    card_html += field_html
+
             card_html += "<hr/></div>"
             card_html = html_template.replace("{{style}}", css).replace("{{body}}", card_html)
 
@@ -126,11 +197,36 @@ class ExportToHtmlDialog(QDialog):
         for match in matches:
             image_path = os.path.join(collection_path, match)
             if os.path.exists(image_path):
-                with open(image_path, "rb") as img_file:
-                    b64_string = base64.b64encode(img_file.read()).decode('ascii')
-                    img_tag = f'data:image/jpeg;base64,{b64_string}'
+                # Convert the image to base64
+                b64_string = self.image_to_base64(image_path)
+                if b64_string:
+                    # Detect the image format and correctly insert it in the src attribute
+                    mime_type = self.detect_mime_type(image_path)
+                    # Insert the base64 image directly without additional <img> tag
+                    img_tag = f'data:{mime_type};base64,{b64_string}'
                     text = text.replace(match, img_tag)
         return text
+
+    def image_to_base64(self, image_path):
+        """Convert an image file to base64 encoding."""
+        try:
+            with open(image_path, "rb") as img_file:
+                return base64.b64encode(img_file.read()).decode('ascii')
+        except Exception as e:
+            print(f"Error converting image to base64: {str(e)}")
+            return None
+
+    def detect_mime_type(self, image_path):
+        """Detect the mime type based on the file extension."""
+        ext = os.path.splitext(image_path)[1].lower()
+        if ext in ['.jpg', '.jpeg']:
+            return 'image/jpeg'
+        elif ext == '.png':
+            return 'image/png'
+        elif ext == '.gif':
+            return 'image/gif'
+        else:
+            return 'image/jpeg'  # Default to jpeg if unknown
 
     def convert_audio(self, text):
         collection_path = mw.col.media.dir()
@@ -142,7 +238,11 @@ class ExportToHtmlDialog(QDialog):
                     b64_string = base64.b64encode(audio_file.read()).decode('ascii')
                     audio_tag = f'''
                     <audio id="audio_{idx}" src="data:audio/mpeg;base64,{b64_string}" type="audio/mpeg"></audio>
-                    <button class="audio-btn" onclick="playAudio('audio_{idx}')"></button>
+                    <button class="audio-btn" onclick="playAudio('audio_{idx}')">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-volume-up">
+                            <path d="M3 9v6h4l5 5V4L7 9zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77"></path>
+                        </svg>
+                    </button>
                     '''
                     text = text.replace(f'[sound:{match}]', audio_tag)
         return text
