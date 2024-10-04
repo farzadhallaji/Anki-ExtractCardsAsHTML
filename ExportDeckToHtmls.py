@@ -18,7 +18,7 @@ html_template = """
             font-family: Arial, sans-serif;
             line-height: 1.6;  /* Increased line height for better readability */
         }
-    
+
         /* Card container with soft rounded edges and comfortable padding */
         .card-container {
             margin: 20px;
@@ -27,40 +27,61 @@ html_template = """
             border-radius: 12px;  /* Slightly larger border radius */
             background-color: #3B3B3B;  /* Slightly lighter background for card area */
         }
-    
+
+        /* Grid layout for aligning field-name and field-value */
+        .field-container {
+            display: grid;
+            grid-template-columns: 150px auto; /* Define two columns: one for the field-name, one for the field-value */
+            gap: 10px; /* Adds space between the columns */
+            align-items: center; /* Aligns items vertically in the middle */
+        }
+
+        /* Field name is made less prominent but still readable */
         /* Field name is made less prominent but still readable */
         .field-name {
             color: #BBBBBB;  /* Lighter gray for field names */
             font-size: 12px;  /* Slightly larger for easier readability */
             font-weight: normal;
+            text-align: right; /* Align field name to the right */
+            padding-right: 10px; /* Add spacing between field-name and field-value */
+            width: 120px; /* Set a fixed width for all field-name elements */
+            display: inline-block; /* Ensure the width is respected */
         }
-    
+
+
         /* Field values are slightly larger and in soft white */
         .field-value {
             color: #E0E0E0;  /* Soft off-white for text */
             font-size: 14px;  /* Larger text for easier reading */
         }
-    
-        /* Bold and emphasized "Word" field with a calming orange color */
+
         .field-value-bold {
             font-weight: bold;
             font-size: 22px;  /* Larger for emphasis */
             color: #FFA500;  /* Muted, warm orange */
         }
-    
+
+        /* Ensure field values are aligned to the left */
+        .field-value,
+        .field-value-bold {
+            text-align: left;
+        }
+
         /* Images are kept small but can be adjusted easily */
         img {
             width: 100px;
             height: 100px;
             object-fit: cover;
             border-radius: 8px;  /* Slight rounding to soften the edges */
+            display: inline-block;  /* This makes the audio button inline */
+            vertical-align: middle; /* Aligns the button to the middle of the line */
         }
-    
+
         /* Links in a calming desaturated orange */
         a {
             color: #FFA500;  /* Warm, muted orange */
         }
-    
+
         /* Custom audio button with SVG icon */
         button.audio-btn {
             background: none;
@@ -71,18 +92,21 @@ html_template = """
             display: flex;
             justify-content: center;
             align-items: center;
+            display: inline-block;  /* This makes the audio button inline */
+            vertical-align: middle; /* Aligns the button to the middle of the line */
         }
-    
+
         /* The play button icon with a warm orange tone */
         button.audio-btn svg {
             width: 100%;
             height: 100%;
             fill: #FFA500;  /* Warm, muted orange */
         }
-    
+
         button.audio-btn:focus {
             outline: none;  /* Remove focus outline for a cleaner look */
         }
+
     </style>
 </head>
 <body>
@@ -105,7 +129,7 @@ html_template = """
 class ExportToHtmlDialog(QDialog):
     def __init__(self):
         super().__init__(mw)
-        self.setWindowTitle("Export Deck to HTML")
+        self.setWindowTitle("Export Deck to HTMLs")
         self.deck_selection = QComboBox()
         self.deck_selection.addItems(mw.col.decks.allNames())
         
@@ -145,31 +169,50 @@ class ExportToHtmlDialog(QDialog):
             css = model.get('css', '')
 
             # Build the HTML for the card
-            card_html = f"<div class='card-container'><h3>Card {i+1}</h3>\n"
+            card_html = f"<div class='card-container'>\n"
             for field_name in note.keys():
                 value = note[field_name].strip()  # Strip whitespace
                 if value:  # Only include non-empty fields
-                    value = re.sub(r'{{[c|C][0-9]+::(.*?)}}', r'\1', value)  # Handle cloze deletion
-
+                    # value = re.sub(r'{{[c|C][0-9]+::(.*?)}}', r'\1', value)  # Handle cloze deletion
+                    value = re.sub(r'(?i)#0000ff', '#ff8c00', value)  # Case insensitive replacement
+                    value = self.process_media(value)
                     # Special styling for "Word" field
-                    if field_name == 'Word':
-                        # Ensure we replace all color formats
-                        value = re.sub(r'(?i)#0000ff', '#ff8c00', value)  # Case insensitive replacement
-                        field_html = f"<div class='field-name'>{field_name}:</div> <div class='field-value field-value-bold'>{value}</div>\n"
+                    if field_name in ['Word', 'word']:
+                        field_html = f"<div class='field-value field-value-bold'> <span class='field-name'>{field_name}:</span> {value}</div><br>\n"
                     else:
-                        field_html = f"<div class='field-name'>{field_name}:</div> <div class='field-value'>{self.process_media(value)}</div>\n"
+                        field_html = f"<div class='field-value'> <span class='field-name'>{field_name}:</span> {value}</div>\n"
 
                     card_html += field_html
 
-            card_html += "<hr/></div>"
+            card_html += f"<h6>Card {i+1}</h6> <hr/></div>"
             card_html = html_template.replace("{{style}}", css).replace("{{body}}", card_html)
 
             # Determine the filename based on a field value or index
             filename = f"card_{i+1}.html"
-            field_name_for_filename = list(note.keys())[0]  # Optionally use the first field as the filename
-            if note[field_name_for_filename].strip():
-                filename = f"{note[field_name_for_filename].strip()}.html"
-            filename = re.sub(r'[^\w\-_\. ]', '_', filename)  # Clean up the filename
+            # Find the "Word" or "word" field for the filename
+            field_name_for_filename = None
+            for field_name in note.keys():
+                if field_name.lower() == 'word':
+                    field_name_for_filename = field_name
+                    break
+
+            if field_name_for_filename:
+                # Remove [sound:] and clean the value of the word field
+                word_value = note[field_name_for_filename].strip()
+                # Clean the word value, remove [sound:], &nbsp;, and other HTML entities
+                word_value_cleaned = re.sub(r'\[sound:[^\]]+\]', '', word_value).strip()  # Remove [sound:]
+                word_value_cleaned = re.sub(r'&nbsp;', '', word_value_cleaned).strip()  # Remove &nbsp;
+                
+                if word_value_cleaned:
+                    filename = f"{word_value_cleaned}.html"
+                else:
+                    filename = f"card_{i+1}.html"  # Use a unique name if the cleaned word is empty
+            else:
+                filename = f"card_{i+1}.html"  # Use a unique name if no "Word" field exists
+
+            # Clean the filename to remove invalid characters (non-alphanumeric, underscore, dash, period)
+            filename = re.sub(r'[^\w\-_\. ]', '_', filename).strip('_')  # Also strip trailing/leading underscores
+
 
             # Write the HTML to the file in the selected directory
             file_path = os.path.join(directory, filename)
@@ -255,3 +298,6 @@ def show_export_dialog():
 action = QAction("Export Deck to HTML with Media", mw)
 action.triggered.connect(show_export_dialog)
 mw.form.menuTools.addAction(action)
+
+shortcut = QShortcut(QKeySequence("Ctrl+Shift+M"), mw)
+shortcut.activated.connect(show_export_dialog)
